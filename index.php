@@ -3,28 +3,46 @@ require_once __DIR__ . '/config/env.php';
 session_start();
 
 $imageDir = 'images/';
-$images = [];
+$cacheFile = 'image-cache.json';
+$cacheTime = 60;
 
-if (is_dir($imageDir)) {
+function getImagesWithCache($dir, $cacheFile, $cacheTime) {
+    if (file_exists($cacheFile) && 
+        (time() - filemtime($cacheFile) < $cacheTime)) {
+        $cached = json_decode(file_get_contents($cacheFile), true);
+        if ($cached !== null) return $cached;
+    }
+    
+    $images = [];
+    if (!is_dir($dir)) return $images;
+    
     $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-    $files = scandir($imageDir);
+    $files = array_diff(scandir($dir), ['.', '..']);
     
     foreach ($files as $file) {
-        $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        if (in_array($extension, $allowedExtensions)) {
-            $imagePath = $imageDir . $file;
+        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        if (in_array($ext, $allowedExtensions)) {
+            $path = $dir . $file;
+            $info = @getimagesize($path);
             $images[] = [
-                'src' => $imagePath,
+                'src' => $path,
                 'name' => $file,
-                'path' => $imagePath
+                'width' => $info[0] ?? 800,
+                'height' => $info[1] ?? 600,
+                'mtime' => filemtime($path)
             ];
         }
     }
     
     usort($images, function($a, $b) {
-        return filemtime($b['path']) - filemtime($a['path']);
+        return $b['mtime'] - $a['mtime'];
     });
+    
+    file_put_contents($cacheFile, json_encode($images));
+    return $images;
 }
+
+$images = getImagesWithCache($imageDir, $cacheFile, $cacheTime);
 
 if (isset($_GET['logout'])) {
     session_destroy();
@@ -207,11 +225,6 @@ if ($isAuthenticated && isset($_SESSION['login_time'])) {
             font-size: 16px;
             font-weight: 500;
         }
-
-        .hidden {
-            transition: opacity 0.4s ease-in-out;
-            opacity: 0;
-        }
     </style>
 </head>
 <body>
@@ -236,14 +249,10 @@ if ($isAuthenticated && isset($_SESSION['login_time'])) {
     
     <section id="gallery-container" class="justified-gallery">
         <?php if ($isAuthenticated): ?>
-        <?php foreach ($images as $index => $image): 
-            $imageInfo = @getimagesize($image['src']);
-            $width = $imageInfo[0] ?? 800;
-            $height = $imageInfo[1] ?? 600;
-        ?>
+        <?php foreach ($images as $index => $image): ?>
         <a href="<?php echo htmlspecialchars($image['src']); ?>" 
            data-fancybox="gallery" 
-           style="--width: <?php echo $width; ?>; --height: <?php echo $height; ?>;">
+           style="--width: <?php echo $image['width']; ?>; --height: <?php echo $image['height']; ?>;">
             <img src="<?php echo htmlspecialchars($image['src']); ?>" 
                  alt="" 
                  loading="<?php echo $index < 20 ? 'eager' : 'lazy'; ?>">
