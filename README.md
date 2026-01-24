@@ -1,4 +1,4 @@
-# Private Cloud Gallery
+# Private Hosting Gallery
 
 A secure, private photo gallery for couples with authentication, file uploads.
 
